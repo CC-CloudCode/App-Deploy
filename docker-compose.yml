@@ -1,0 +1,148 @@
+version: '3.3'
+
+services:
+
+    bettingspree-nginx:
+        depends_on: 
+            - "bettingspree-interface"
+        image: bragamann/bettingspree-nginx:2020-01-12
+        container_name: bettingspree-nginx
+        ports:
+            - "80:80"
+        networks:
+            - backend
+
+
+    bettingspree-interface:
+        depends_on: 
+            - "bettingspree-auth"
+            - "bettingspree-chat"
+            - "bettingspree-bets"
+            - "bettingspree-data"
+        container_name: bettingspree-interface
+        image: bragamann/bettingspree-interface:2020-01-12
+        ports: 
+            - "8080:8080"
+        networks: 
+            - backend
+
+
+    bettingspree-auth:
+        depends_on: 
+            - "bettingspree-authDB"
+        container_name: bettingspree-auth
+        image: bragamann/bettingspree-auth:2020-01-12
+        ports: 
+            - "4050:4050"
+        networks: 
+            - backend
+
+
+    bettingspree-chat:
+        depends_on: 
+            - "bettingspree-chatDB"
+        container_name: bettingspree-chat
+        image: bragamann/bettingspree-chat:2020-01-12
+        ports: 
+            - "4051:4051"
+        networks: 
+            - backend
+
+
+    bettingspree-data:
+        depends_on: 
+            - "bettingspree-dataDB"
+        container_name: bettingspree-data
+        image: bragamann/bettingspree-data:2020-01-12
+        ports: 
+            - "4052:4052"
+        networks: 
+            - backend
+        volumes:
+            - ./images:/app/public/images
+
+
+    bettingspree-bets:
+        depends_on: 
+            - "bettingspree-betsDB"
+        container_name: bettingspree-bets
+        image: bragamann/bettingspree-bets:2020-01-12
+        ports: 
+            - "4053:4053"
+        networks: 
+            - backend
+
+
+
+        
+
+
+
+
+
+
+
+
+    bettingspree-authDB:
+        image: bragamann/bettingspree-authDB:2020-01-12
+        container_name: bettingspree-authDB
+        ports:
+            - "27017:27017"
+        networks:
+            - mongoauth
+            - backend
+        volumes: 
+            - mongodbauthvol:/data/db
+
+
+    bettingspree-chatDB:
+        image: bragamann/bettingspree-chatDB:2020-01-12
+        container_name: bettingspree-chatDB
+        command: mongod --port 27018
+        ports:
+            - "27018:27018"
+        networks:
+            - backend
+        volumes: 
+            - mongodbchatvol:/data/db
+
+
+    bettingspree-dataDB:
+        image: bragamann/bettingspree-dataDB:2020-01-12
+        container_name: bettingspree-dataDB
+        command: --default-authentication-plugin=mysql_native_password
+        ports:
+            - "3306:3306"
+        networks:
+            - backend
+        environment:
+            MYSQL_ROOT_PASSWORD: PEI2020
+        volumes:
+           - mysqldatavol:/var/lib/mysql
+           - ./dataDB/setup.sql:/docker-entrypoint-initdb.d
+
+
+    bettingspree-betsDB:
+        image: bragamann/bettingspree-betsDB:2020-01-12
+        container_name: bettingspree-betsDB
+        command: --default-authentication-plugin=mysql_native_password
+        ports:
+            - "52000:3306"
+        networks:
+            - backend
+        environment:
+            MYSQL_ROOT_PASSWORD: PEI2020
+        volumes:
+           - mysqlbetsvol:/var/lib/mysql
+           - ./betsDB/setup.sql:/docker-entrypoint-initdb.d
+       
+
+
+networks:
+    backend:
+
+volumes:
+    mysqlbetsvol:
+    mysqldatavol:
+    mongodbchatvol:
+    mongodbauthvol:
