@@ -9,7 +9,7 @@ services:
         image: bragamann/bettingspree-nginx:2020-01-12
         container_name: bettingspree-nginx
         ports:
-            - "8000:8000"
+            - "80:80"
         networks:
             - backend
 
