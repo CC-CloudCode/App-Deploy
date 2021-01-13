@@ -5,10 +5,11 @@ services:
     bettingspree-nginx:
         depends_on: 
             - "bettingspree-interface"
+        #    - "bettingspree-manutencaodb"
         image: bragamann/bettingspree-nginx:2020-01-12
         container_name: bettingspree-nginx
         ports:
-            - "80:80"
+            - "8000:8000"
         networks:
             - backend
 
@@ -29,7 +30,7 @@ services:
 
     bettingspree-auth:
         depends_on: 
-            - "bettingspree-authDB"
+            - "bettingspree-authdb"
         container_name: bettingspree-auth
         image: bragamann/bettingspree-auth:2020-01-12
         ports: 
@@ -40,7 +41,7 @@ services:
 
     bettingspree-chat:
         depends_on: 
-            - "bettingspree-chatDB"
+            - "bettingspree-chatdb"
         container_name: bettingspree-chat
         image: bragamann/bettingspree-chat:2020-01-12
         ports: 
@@ -51,7 +52,7 @@ services:
 
     bettingspree-data:
         depends_on: 
-            - "bettingspree-dataDB"
+            - "bettingspree-datadb"
         container_name: bettingspree-data
         image: bragamann/bettingspree-data:2020-01-12
         ports: 
@@ -64,7 +65,7 @@ services:
 
     bettingspree-bets:
         depends_on: 
-            - "bettingspree-betsDB"
+            - "bettingspree-betsdb"
         container_name: bettingspree-bets
         image: bragamann/bettingspree-bets:2020-01-12
         ports: 
@@ -72,6 +73,16 @@ services:
         networks: 
             - backend
 
+
+    #bettingspree-manutencaodb:
+    #    depends_on: 
+    #        - "bettingspree-datadb"
+    #        - "bettingspree-betsdb"
+    #    container_name: bettingspree-manutencaodb
+    #    image: bragamann/bettingspree-manutencaodb:2020-01-12
+    #    command: python ./__init__.py
+    #    networks: 
+    #        - backend
 
 
         
@@ -83,21 +94,20 @@ services:
 
 
 
-    bettingspree-authDB:
-        image: bragamann/bettingspree-authDB:2020-01-12
-        container_name: bettingspree-authDB
+    bettingspree-authdb:
+        image: bragamann/bettingspree-authdb:2020-01-12
+        container_name: bettingspree-authdb
         ports:
             - "27017:27017"
         networks:
-            - mongoauth
             - backend
         volumes: 
             - mongodbauthvol:/data/db
 
 
-    bettingspree-chatDB:
-        image: bragamann/bettingspree-chatDB:2020-01-12
-        container_name: bettingspree-chatDB
+    bettingspree-chatdb:
+        image: bragamann/bettingspree-chatdb:2020-01-12
+        container_name: bettingspree-chatdb
         command: mongod --port 27018
         ports:
             - "27018:27018"
@@ -107,9 +117,9 @@ services:
             - mongodbchatvol:/data/db
 
 
-    bettingspree-dataDB:
-        image: bragamann/bettingspree-dataDB:2020-01-12
-        container_name: bettingspree-dataDB
+    bettingspree-datadb:
+        image: bragamann/bettingspree-datadb:2020-01-12
+        container_name: bettingspree-datadb
         command: --default-authentication-plugin=mysql_native_password
         ports:
             - "3306:3306"
@@ -119,22 +129,23 @@ services:
             MYSQL_ROOT_PASSWORD: PEI2020
         volumes:
            - mysqldatavol:/var/lib/mysql
-           - ./dataDB/setup.sql:/docker-entrypoint-initdb.d
+           - ./dataDB/setup.sql:/docker-entrypoint-initdb.d/setup.sql
 
 
-    bettingspree-betsDB:
-        image: bragamann/bettingspree-betsDB:2020-01-12
-        container_name: bettingspree-betsDB
+    bettingspree-betsdb:
+        image: bragamann/bettingspree-betsdb:2020-01-12
+        container_name: bettingspree-betsdb
         command: --default-authentication-plugin=mysql_native_password
         ports:
-            - "52000:3306"
+            - "3307:3307"
         networks:
             - backend
         environment:
             MYSQL_ROOT_PASSWORD: PEI2020
+            MYSQL_TCP_PORT: 3307
         volumes:
            - mysqlbetsvol:/var/lib/mysql
-           - ./betsDB/setup.sql:/docker-entrypoint-initdb.d
+           - ./betsDB/setup.sql:/docker-entrypoint-initdb.d/setup.sql
        
 
 
