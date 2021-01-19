@@ -5,7 +5,6 @@ services:
     bettingspree-nginx:
         depends_on: 
             - "bettingspree-interface"
-            - "bettingspree-manutencaodb"
         image: bragamann/bettingspree-nginx:2020-01-12
         container_name: bettingspree-nginx
         ports:
@@ -76,8 +75,7 @@ services:
 
     bettingspree-manutencaodb:
         depends_on: 
-            - "bettingspree-datadb"
-            - "bettingspree-betsdb"
+            - "bettingspree-nginx"
         container_name: bettingspree-manutencaodb
         image: bragamann/bettingspree-manutencaodb:2020-01-12
         command: python ./__init__.py
