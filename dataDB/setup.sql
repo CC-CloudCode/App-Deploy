@@ -432,7 +432,7 @@ INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `ema
 INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user19', '1998-12-19', '$2a$10$bFuJiLz1Q4HxawPwZ4FF1eOlROK1MmTfwf4qfDtakoYEDctIiUJX6','user19@hotmail.com', 'Rita Pereira', 0, 0, false, 0, 0, 0.0, 0); 
 INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user17', '1998-12-17', '$2a$10$liO06TSjtPMLi0wWlqQPv.uQB3tUgnrbYKV/fazdrtferg0rwc4F6','user17@hotmail.com', 'Sara Guedes', 0, 0, false, 0, 0, 0.0, 0); 
 
-INSERT INTO `databettingspree`.`group` (`idgroup`, `createdby`, `name`) VALUES (-1, 1, 'Apagados')
+INSERT INTO `databettingspree`.`group` (`idgroup`, `createdby`, `name`) VALUES (-1, 1, 'Apagados');
 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (1, 'England Tips'); 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (2, 'Portugal Tips');
