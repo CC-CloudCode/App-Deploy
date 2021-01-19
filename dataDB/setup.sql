@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS `databettingspree`.`user` (
   `following` INT NOT NULL,
   `private` TINYINT NOT NULL,
   `balance` DOUBLE NOT NULL,
+  `copiaspriv` INT NOT NULL,
+  `avgodd` FLOAT NOT NULL,
+  `rankscore` INT NOT NULL,
   PRIMARY KEY (`iduser`),
   UNIQUE INDEX `username_UNIQUE` (`username` ASC) VISIBLE,
   UNIQUE INDEX `iduser_UNIQUE` (`iduser` ASC) VISIBLE)
@@ -45,6 +48,7 @@ CREATE TABLE IF NOT EXISTS `databettingspree`.`bet` (
   `state` INT NOT NULL,
   `originalbetid` INT NULL,
   `isDraft` TINYINT NOT NULL,
+  `oddtotal` FLOAT NOT NULL,
   PRIMARY KEY (`idbet`),
   INDEX `fk_bet_user1_idx` (`iduser` ASC) VISIBLE,
   CONSTRAINT `fk_bet_user1`
@@ -282,10 +286,10 @@ use databettingspree;
 
 
 -- GRANT INSERT, SELECT, DELETE, UPDATE ON databettingspree.* TO 'bettingspree'@'localhost' IDENTIFIED BY 'PEI2020';
-CREATE USER 'bettingspree'@'%' IDENTIFIED BY 'PEI2020';
-ALTER USER 'bettingspree'@'%' IDENTIFIED WITH mysql_native_password BY 'PEI2020';
-GRANT ALL PRIVILEGES ON * . * TO 'bettingspree'@'%';
-FLUSH PRIVILEGES;
+-- CREATE USER 'bettingspree'@'%' IDENTIFIED BY 'PEI2020';
+-- ALTER USER 'bettingspree'@'%' IDENTIFIED WITH mysql_native_password BY 'PEI2020';
+-- GRANT ALL PRIVILEGES ON * . * TO 'bettingspree'@'%';
+-- FLUSH PRIVILEGES;
 
 
 -- ----------------------------------- Triggers ------------------------
@@ -295,6 +299,8 @@ FLUSH PRIVILEGES;
 -- -----------------------------------------------------------------
 -- -----------------------------------------------------------------
 
+
+use databettingspree;
 
 Drop Trigger IF EXISTS follower_insert;
 Delimiter $$
@@ -321,6 +327,80 @@ Delimiter ;
 
 
 
+Drop Trigger IF EXISTS copias_privadas;
+Delimiter $$
+CREATE TRIGGER copias_privadas
+AFTER insert ON databettingspree.bet
+FOR EACH ROW
+BEGIN
+declare originaluserid INT;
+IF not isnull(new.originalbetid)
+THEN
+	select iduser into originaluserid from databettingspree.bet where idbet = NEW.originalbetid;
+	Update databettingspree.user Set copiaspriv = copiaspriv + 1 where iduser = originaluserid;
+    
+    update databettingspree.user set rankscore = rankscore + 1 where iduser = originaluserid;
+END IF;
+END $$
+Delimiter ;
+
+
+Drop Trigger IF EXISTS total_odd_aposta;
+Delimiter $$
+CREATE TRIGGER total_odd_aposta
+AFTER insert ON databettingspree.event
+FOR EACH ROW
+BEGIN
+	Update databettingspree.bet Set oddtotal = oddtotal * NEW.odd where idbet = NEW.idbet;
+END $$
+Delimiter ;
+
+
+Drop Trigger IF EXISTS update_aposta;
+Delimiter $$
+CREATE TRIGGER update_aposta
+AFTER update ON databettingspree.bet
+FOR EACH ROW
+BEGIN
+
+declare avg_bet FLOAT;
+declare copias INT;
+declare bets_ganhas INT;
+declare bets_perdidas INT;
+
+IF NEW.state != 0 THEN
+
+	select AVG(oddtotal) into avg_bet from databettingspree.bet where iduser = old.iduser and isnull(originalbetid) and isDraft = false and state != 0;
+    
+    IF isnull(avg_bet) THEN
+		set avg_bet = 0;
+	END IF;
+    
+	Update databettingspree.user Set avgodd = avg_bet where iduser = old.iduser;
+    
+    select avgodd into avg_bet from databettingspree.user where iduser = OLD.iduser;
+    select copiaspriv into copias from databettingspree.user where iduser = OLD.iduser;
+    select count(idbet) into bets_ganhas from databettingspree.bet where old.iduser = iduser and state = 1 and isnull(originalbetid) and isDraft = false;
+    select count(idbet) into bets_perdidas from databettingspree.bet where old.iduser = iduser and state = 2 and isnull(originalbetid) and isDraft = false;
+    
+    IF (bets_ganhas - bets_perdidas) > 0 THEN
+    
+		Update databettingspree.user Set rankscore = avg_bet * (bets_ganhas - bets_perdidas) + copias where iduser = old.iduser;
+        
+	ELSE 
+		
+        Update databettingspree.user Set rankscore = copias where iduser = old.iduser;
+    
+    END IF;
+
+END IF;
+
+END $$
+Delimiter ;
+
+
+
+
 -- ----------------------------------- Povoamento ------------------------
 -- -----------------------------------------------------------------
 -- -----------------------------------------------------------------
@@ -331,35 +411,38 @@ Delimiter ;
 
 
 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user1', '1998-12-1', '$2a$10$oJuF.CMfsgamx/L8gj6WaOrSERX7i4RXfsk.GtvN/Ft9iH.g1p0U6','user1@hotmail.com', 'José Sousa', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user2', '1998-12-2', '$2a$10$bv9BRFsdhutQt0UPU0DdZe8Y935qDla9DxR5XI2twfe7tpd2MagCe','user2@hotmail.com', 'Gervásio Macedo', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user3', '1998-12-3', '$2a$10$Ppr.28duF/OvXL5wDNoj5OVgG6ffjCxd.1031VLB8WF1Mc4EGgHT.','user3@hotmail.com', 'Fernando Pinto', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user4', '1998-12-4', '$2a$10$Wfmbyq4XLo4KEIPtXsrR8uwNzd.ITpZh5j540pVNuVEScnKXzoUe.','user4@hotmail.com', 'Manuel Teixeira', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user5', '1998-12-5', '$2a$10$cGVDqiCWkYnVooCFNbE7iOXWpmvC9uzQ19FV2nkvT05A4JDCQ01tC','user5@hotmail.com', 'André Ferreira', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user7', '1998-12-7', '$2a$10$OEQzZjtmV9e.Iw9.6Rscw.QZ5YUQqLabOuyh.IQ3WeKzKER/6s3.2','user7@hotmail.com', 'Gabriel Magalhães', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user9', '1998-12-9', '$2a$10$k.2oF2dVjbx.Z/SFN4p/QOBuvDrkXPINCCjKlf0xyaMkDvTHnktsq','user9@hotmail.com', 'Ricardo Pereira', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user6', '1998-12-6', '$2a$10$7.REzbBDiG1v56RZC5256uQYc60/RMl.mev5CYOrP8Dqjp6OkhBwy','user6@hotmail.com', 'Carlos Dias', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user8', '1998-12-8', '$2a$10$qRPbFyNTAZLedgGTB0KtDeygW8dwKmRFfRmtaauDhu6dyQMETOKVG','user8@hotmail.com', 'Dinis Peixoto', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user10', '1998-12-10', '$2a$10$HutSSQX4wNNQC9mjOpHmkefebXM7wQrVBagARepu0kzSiLPT5MP5u','user10@hotmail.com', 'Sheila Dias', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user12', '1998-12-12', '$2a$10$oVUio9QAvWeSnoMdvgBtEuMurwRQd/h0zwImppoJM9mI020xITRU.','user12@hotmail.com', 'Daniel Esteves', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user11', '1998-12-11', '$2a$10$pmrD/aSL.Y03wWGnOwnNhezYBM0qhodBWEIxHY2qK6ePf7KAPH59y','user11@hotmail.com', 'Catarina Silva', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user15', '1998-12-15', '$2a$10$cWkH7VnMTMA1O0PUyQPRZ.pEzrAkKs.wfbLU4v/aKj.IH6yhpUU.e','user15@hotmail.com', 'Liliana Brandão', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user13', '1998-12-13', '$2a$10$1vEjepLrDhTZm0iWQBuZ8.jeMeA4QSOmRpEuar2N.kL7OxE419P8y','user13@hotmail.com', 'Joana Machado', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user17', '1998-12-17', '$2a$10$3RsWaUquWqiDAxmeKk/hUO053BynRJ1HAHh/5M3hLrnZ6Eo3RdnvC','user17@hotmail.com', 'Sara Guedes', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user14', '1998-12-14', '$2a$10$Z39noq/z3IIX1UsBnnQWfOZn/lNfuWG3XS93DreozfJttsMnGr5TO','user14@hotmail.com', 'Maria Valentim', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user19', '1998-12-19', '$2a$10$R9tXCTJKNJunqyofaJ9eVu8upHE9AegjsaO4U7M8tYCYKKuhSHMge','user19@hotmail.com', 'Rita Pereira', 0, 0, false, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user18', '1998-12-18', '$2a$10$KoGh3pk1TFJ9sbNUycZ66./k/r/QzV1FXypzuVoWz0pwk1nkfg8qy','user18@hotmail.com', 'Francisca Carvalho', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user20', '1998-12-20', '$2a$10$JQ.pzHk44X69fv8cYHSpM.PL6Vo245C0zenTmjP8.N2x.cb5Tf4uO','user20@hotmail.com', 'Raquel Matos', 0, 0, true, 0); 
-INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`) VALUES ('user16', '1998-12-16', '$2a$10$kn8bUZDbut4jCBMtaoFf.uPFvwvc.gM7wgcpr32irP.eFmvDpkQfq','user16@hotmail.com', 'Inês Castro', 0, 0, true, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user1', '1998-12-1', '$2a$10$uuFgNytz3v1pWx2j49gh7eQkNmPlWf8Xw3HoH9fFImcV42cK10hBu','user1@hotmail.com', 'José Sousa', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user2', '1998-12-2', '$2a$10$dysX6L113czg1QBjnMI7Yu2jva7OeelLkKS5avU9D7V9vJ7g0MjQe','user2@hotmail.com', 'Gervásio Macedo', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user3', '1998-12-3', '$2a$10$4CsNdxznPwMHuhPTFRg2SuJxiYqQoRXNZvKzKoFSMn39dSR8QhPhi','user3@hotmail.com', 'Fernando Pinto', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user4', '1998-12-4', '$2a$10$3z049anVDXxK6IyVk9QTjOx.64vUuGXGa/a9ePpToyeVzOfm3lDki','user4@hotmail.com', 'Manuel Teixeira', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user5', '1998-12-5', '$2a$10$kkFz7PUXg/Z0Ggu/rKXu.eUKGC8oC6geRP7rIrlhRia.pnlsZlKMq','user5@hotmail.com', 'André Ferreira', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user6', '1998-12-6', '$2a$10$YpfOUfpjVHOjcn958f4.sOvroh6H/7Y/Zl84qiE0e/JEVqvwZ.J.G','user6@hotmail.com', 'Carlos Dias', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user7', '1998-12-7', '$2a$10$ssJPsZMHDQjuXlz3.k1qkeESJJdcPnT9wzmhbKk4OX1xEmna.UyPq','user7@hotmail.com', 'Gabriel Magalhães', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user8', '1998-12-8', '$2a$10$O9.4sVAu7FYqzYM2v6zlZOm48sB7SWPdIuOvxRgTMXmW//XJFTrmi','user8@hotmail.com', 'Dinis Peixoto', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user9', '1998-12-9', '$2a$10$z7idaOCs8YF6fDMre4p4sOsbGHYGtvEN3FggH/ZWNoNYJPQi4DcoW','user9@hotmail.com', 'Ricardo Pereira', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user11', '1998-12-11', '$2a$10$msEuG7y14oXeGIATL1HqquMYfpeueE0l1P/xycAuX.nc6jEyZrfXK','user11@hotmail.com', 'Catarina Silva', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user10', '1998-12-10', '$2a$10$D/X0Hxo4ms3M/q3LnBsXSuDvtKbXhJXA0sGjileDloyCv9ZmyfVAu','user10@hotmail.com', 'Sheila Dias', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user12', '1998-12-12', '$2a$10$BkVAj4L.QPf3A5Roziay1e7EiJnCDqKWWlYd5DpI1ga0FYKn56Zcm','user12@hotmail.com', 'Daniel Esteves', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user14', '1998-12-14', '$2a$10$l0SBDvWP9xZyVehnozqzguNRnyyn833h1se4oJ2R8ax9/2HXqkXBC','user14@hotmail.com', 'Maria Valentim', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user15', '1998-12-15', '$2a$10$g2Sk30aKm4ebf3YqQ19vzu18kMsnXJNXvMYwpZzIUbg6SLvrK.0ba','user15@hotmail.com', 'Liliana Brandão', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user16', '1998-12-16', '$2a$10$a9kKjFXUDlisjdBLGrRgCuPIyQ1sq5/Zta96tMEbFiyH/d0oIoJre','user16@hotmail.com', 'Inês Castro', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user13', '1998-12-13', '$2a$10$PyAd3nKB1jxJ2rcjKPpyPet6apK2THZaDjiSSSFT9nh.vo6dgv3CK','user13@hotmail.com', 'Joana Machado', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user18', '1998-12-18', '$2a$10$sGlN/hd4YPtqSbePu.K1fOf017jbyDyQK.crfV/VnA4HbbVv4yMVa','user18@hotmail.com', 'Francisca Carvalho', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user20', '1998-12-20', '$2a$10$1BGtLrCVTcIECocMW6LaMulVdIoKDiAVQ/xppmG6qDv8GzNP5i/1u','user20@hotmail.com', 'Raquel Matos', 0, 0, true, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user19', '1998-12-19', '$2a$10$bFuJiLz1Q4HxawPwZ4FF1eOlROK1MmTfwf4qfDtakoYEDctIiUJX6','user19@hotmail.com', 'Rita Pereira', 0, 0, false, 0, 0, 0.0, 0); 
+INSERT INTO `databettingspree`.`user` (`username`, `birthdate`, `password`, `email`, `name`, `followers`, `following`, `private`, `balance`, `copiaspriv`, `avgodd`, `rankscore`) VALUES ('user17', '1998-12-17', '$2a$10$liO06TSjtPMLi0wWlqQPv.uQB3tUgnrbYKV/fazdrtferg0rwc4F6','user17@hotmail.com', 'Sara Guedes', 0, 0, false, 0, 0, 0.0, 0); 
+
+INSERT INTO `databettingspree`.`group` (`idgroup`, `createdby`, `name`) VALUES (-1, 1, 'Apagados')
+
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (1, 'England Tips'); 
-INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (2, 'Portugal Tips'); 
+INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (2, 'Portugal Tips');
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (3, 'Italy Tips'); 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (4, 'France Tips'); 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (5, 'Spain Tips'); 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (6, 'Germany Tips'); 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (7, 'Brazil Tips'); 
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (8, 'Champions Tips'); 
-INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (9, 'Holand Tips'); 
+INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (9, 'Holand Tips');
 INSERT INTO `databettingspree`.`group` (`createdby`, `name`) VALUES (10, 'Turkey Tips'); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 1,true); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 2,true); 
@@ -371,193 +454,193 @@ INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALU
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 8,true); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 9,true); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 10,true); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-12 12:17:27', 1, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-12 12:17:27', 1, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 2, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-12 12:17:27', 2, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 1, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 2, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 3, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-12 12:17:27', 3, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 3, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 4, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', true, '2021-01-12 12:17:27', 4, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-12 12:17:27', 4, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 5, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-12 12:17:27', 5, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 5, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 6, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-12 12:17:27', 6, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-12 12:17:27', 6, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-12 12:17:27', 7, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-12 12:17:27', 7, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 7, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-12 12:17:27', 8, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-12 12:17:27', 8, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', false, '2021-01-12 12:17:27', 8, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 9, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', true, '2021-01-12 12:17:27', 9, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 9, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 10, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-12 12:17:27', 10, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 10, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 11, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-12 12:17:27', 11, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 11, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 12, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-12 12:17:27', 12, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 12, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 13, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-12 12:17:27', 13, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-12 12:17:27', 13, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 14, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-12 12:17:27', 14, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-12 12:17:27', 14, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-12 12:17:27', 15, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-12 12:17:27', 15, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 15, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 16, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-12 12:17:27', 16, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-12 12:17:27', 16, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 17, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', true, '2021-01-12 12:17:27', 17, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 17, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-12 12:17:27', 18, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-12 12:17:27', 18, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-12 12:17:27', 18, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-12 12:17:27', 19, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-12 12:17:27', 19, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-12 12:17:27', 19, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-12 12:17:27', 20, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', true, '2021-01-12 12:17:27', 20, null, null, null); 
-INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', false, '2021-01-12 12:17:27', 20, null, null, null); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 1); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 1); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (18, 1); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-18 17:05:52', 1, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 1, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 1, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-18 17:05:52', 2, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', false, '2021-01-18 17:05:52', 2, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 3, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', true, '2021-01-18 17:05:52', 2, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-18 17:05:52', 3, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-18 17:05:52', 4, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 3, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-18 17:05:52', 4, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 4, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 5, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-18 17:05:52', 5, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 6, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-18 17:05:52', 6, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 5, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 7, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 7, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 6, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 8, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-18 17:05:52', 8, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 8, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 9, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-18 17:05:52', 7, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 9, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 10, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', true, '2021-01-18 17:05:52', 10, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 10, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 11, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-18 17:05:52', 9, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', true, '2021-01-18 17:05:52', 11, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 11, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', false, '2021-01-18 17:05:52', 12, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 12, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-18 17:05:52', 12, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 13, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-18 17:05:52', 13, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 13, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa noite, viram o jogo do Real Madrid? Levou baile do Shakthar.', false, '2021-01-18 17:05:52', 14, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 14, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-18 17:05:52', 14, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-18 17:05:52', 15, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 15, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 15, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 16, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 17, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', true, '2021-01-18 17:05:52', 16, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 16, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 18, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', true, '2021-01-18 17:05:52', 17, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 17, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Bom dia, acham que é seguro apostar no Tondela ou é muito arriscado?', true, '2021-01-18 17:05:52', 18, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Estou farto de apostar no Barcelona e perder dinheiro.', false, '2021-01-18 17:05:52', 19, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', false, '2021-01-18 17:05:52', 18, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', true, '2021-01-18 17:05:52', 19, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 19, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Esta aplicação está muito boa! Já recomendei aos meus amigos', true, '2021-01-18 17:05:52', 20, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Sigam as minhas apostas se quiserem ganhar dinheiro!', false, '2021-01-18 17:05:52', 20, null, null, null); 
+INSERT INTO `databettingspree`.`post` (`text`, `public`, `date`, `iduser`, `idbet`, `betpublic`, `idgroup`) VALUES ('Boa tarde, acham que o Manchester United ganha hoje?', false, '2021-01-18 17:05:52', 20, null, null, null); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 1); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (4, 2); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 2); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 2); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (6, 2); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (16, 3); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 3); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 3); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 3); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (6, 4); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 4); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 2); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 1); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 1); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 1); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 2); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 2); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 3); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (8, 2); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 3); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 3); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (4, 4); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (6, 3); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 4); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (16, 4); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 4); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (8, 5); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 5); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (10, 5); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 5); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 6); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 6); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 6); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 5); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 4); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 5); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (4, 5); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 6); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 5); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 6); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 6); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (3, 7); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (18, 7); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (9, 7); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 7); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 7); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 7); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 6); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 7); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 7); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 8); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (8, 8); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 8); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 8); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 8); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (9, 8); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (16, 9); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 9); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 9); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 9); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 10); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 10); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (10, 10); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 8); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 9); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (3, 9); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 10); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (3, 10); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 10); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 10); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 11); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 9); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 11); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 11); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 11); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 11); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (4, 12); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 12); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 12); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 12); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 11); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (16, 11); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 12); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 12); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 12); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 13); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (10, 13); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 13); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 13); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 13); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (10, 14); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (9, 14); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (8, 14); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (6, 14); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 15); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 15); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 15); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 15); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 16); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 16); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 14); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (20, 12); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 14); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 14); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 14); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 13); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (8, 15); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 15); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 15); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 15); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (6, 16); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 16); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 17); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (9, 17); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 17); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (7, 17); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (15, 18); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 16); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (9, 16); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 17); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 16); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 17); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (12, 17); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (16, 17); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (18, 18); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (4, 18); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 18); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (5, 19); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 18); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (17, 18); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (9, 19); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 19); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (3, 19); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (1, 19); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 19); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (19, 20); 
 INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (13, 20); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (14, 20); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (11, 20); 
-INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (18, 20); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 20,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 7,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 12,false); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (8, 20); 
+INSERT INTO `databettingspree`.`follower` (`me`, `following`) VALUES (2, 20); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 3,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 8,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 6,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 14,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 18,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (1, 13,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 5,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 6,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 19,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 2,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 20,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 7,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (2, 4,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 16,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 20,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 14,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 17,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 5,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 11,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 4,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (3, 10,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 2,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 3,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 7,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 5,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 9,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 14,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 4,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 10,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 18,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 2,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (4, 11,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 15,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 19,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 9,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 16,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 11,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 1,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (5, 8,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 20,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 16,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 18,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 12,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 8,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 13,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 5,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 9,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 12,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 9,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (6, 11,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 15,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 4,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 20,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 18,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 2,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 11,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (7, 19,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 20,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 1,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 3,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 16,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 5,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 2,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 5,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 17,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (8, 15,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 8,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 10,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 13,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 4,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 18,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 5,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 16,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 19,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 14,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (9, 7,false); 
 INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 8,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 20,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 12,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 3,false); 
-INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 6,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 11,false); 
+INSERT INTO `databettingspree`.`usergroup` (`idgroup`, `iduser`, `isAdmin`) VALUES (10, 7,false); 
