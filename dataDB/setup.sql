@@ -285,11 +285,11 @@ SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
 use databettingspree;
 
 
--- GRANT INSERT, SELECT, DELETE, UPDATE ON databettingspree.* TO 'bettingspree'@'localhost' IDENTIFIED BY 'PEI2020';
--- CREATE USER 'bettingspree'@'%' IDENTIFIED BY 'PEI2020';
--- ALTER USER 'bettingspree'@'%' IDENTIFIED WITH mysql_native_password BY 'PEI2020';
--- GRANT ALL PRIVILEGES ON * . * TO 'bettingspree'@'%';
--- FLUSH PRIVILEGES;
+GRANT INSERT, SELECT, DELETE, UPDATE ON databettingspree.* TO 'bettingspree'@'localhost' IDENTIFIED BY 'PEI2020';
+CREATE USER 'bettingspree'@'%' IDENTIFIED BY 'PEI2020';
+ALTER USER 'bettingspree'@'%' IDENTIFIED WITH mysql_native_password BY 'PEI2020';
+GRANT ALL PRIVILEGES ON * . * TO 'bettingspree'@'%';
+FLUSH PRIVILEGES;
 
 
 -- ----------------------------------- Triggers ------------------------
