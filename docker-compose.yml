@@ -26,6 +26,15 @@ services:
         networks: 
             - backend
 
+    bettingspree-dashboard:
+        depends_on: 
+            - "bettingspree-data"
+        container_name: bettingspree-dashboard
+        image: bragamann/bettingspree-dashboard:2020-01-12
+        ports: 
+            - "8081:8081"
+        networks: 
+            - backend
 
     bettingspree-auth:
         depends_on: 
