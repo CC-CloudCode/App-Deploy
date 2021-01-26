@@ -395,7 +395,15 @@ END IF;
 END $$
 Delimiter ;
 
-
+Drop Trigger IF EXISTS eliminar_rascunho;
+Delimiter $$
+CREATE TRIGGER eliminar_rascunho
+AFTER update ON databettingspree.event
+FOR EACH ROW
+BEGIN
+	Update databettingspree.bet Set isDraft = 3 where idbet = NEW.idbet and isDraft=1;
+END $$
+Delimiter ;
 
 
 -- ----------------------------------- Povoamento ------------------------
