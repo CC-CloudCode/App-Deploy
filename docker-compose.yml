@@ -15,7 +15,6 @@ services:
 
     bettingspree-interface:
         depends_on: 
-            - "bettingspree-auth"
             - "bettingspree-chat"
             - "bettingspree-bets"
             - "bettingspree-data"
@@ -23,17 +22,6 @@ services:
         image: bragamann/bettingspree-interface:2020-01-12
         ports: 
             - "8080:8080"
-        networks: 
-            - backend
-            
-
-    bettingspree-auth:
-        depends_on: 
-            - "bettingspree-authdb"
-        container_name: bettingspree-auth
-        image: bragamann/bettingspree-auth:2020-01-12
-        ports: 
-            - "4050:4050"
         networks: 
             - backend
 
@@ -92,16 +80,6 @@ services:
 
 
 
-    bettingspree-authdb:
-        image: bragamann/bettingspree-authdb:2020-01-12
-        container_name: bettingspree-authdb
-        ports:
-            - "27017:27017"
-        networks:
-            - backend
-        volumes: 
-            - mongodbauthvol:/data/db
-
 
     bettingspree-chatdb:
         image: bragamann/bettingspree-chatdb:2020-01-12
@@ -154,4 +132,3 @@ volumes:
     mysqlbetsvol:
     mysqldatavol:
     mongodbchatvol:
-    mongodbauthvol:
